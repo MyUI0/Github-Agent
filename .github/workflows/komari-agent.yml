@@ -1,0 +1,36 @@
+name: Komari Agent (GitHub Actions)
+
+on:
+  schedule:
+    # 每 6 小时触发一次，与任务时长衔接
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # 允许手动触发
+
+# 防止多个任务同时运行
+concurrency:
+  group: komari-agent
+  cancel-in-progress: false
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # 约 5 小时 50 分钟，留余量
+
+    steps:
+      - name: 下载 Komari Agent
+        run: |
+          curl -fsSL -o komari https://github.com/komari-monitor/komari-agent/releases/latest/download/komari-agent-linux-amd64
+          chmod +x komari
+          echo "Komari Agent 版本："
+          ./komari --version || true
+
+      - name: 运行 Komari Agent
+        env:
+          KOMARI_TOKEN: ${{ secrets.KOMARI_TOKEN }}
+          KOMARI_SERVER: ${{ secrets.KOMARI_SERVER }}
+        run: |
+          echo "启动 Komari Agent..."
+          ./komari -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
+            --disable-auto-update \
+            --reconnect-interval 10 \
+            --max-retries 99
