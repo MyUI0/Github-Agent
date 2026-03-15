@@ -1,48 +1,66 @@
-name: Komari Agent (Hourly 25min Run)
+# 仅展示关键的「运行Agent」步骤，其余步骤（拉代码、赋权限）不变
+- name: 运行Komari Agent（优先输出日志排查连接问题）
+  env:
+    KOMARI_TOKEN: ${{ secrets.KOMARI_TOKEN }}
+    KOMARI_SERVER: ${{ secrets.KOMARI_SERVER }}
+  run: |
+    # ========== 前置检查（先确认基础条件） ==========
+    echo "=== 前置检查 ==="
+    # 1. 检查二进制文件是否存在
+    if [ ! -f ./bin/komari-agent ]; then
+      echo "错误：二进制文件 ./bin/komari-agent 不存在！"
+      exit 1
+    fi
+    # 2. 检查参数是否正常传入
+    echo "KOMARI_SERVER: $KOMARI_SERVER"
+    echo "KOMARI_TOKEN: ${KOMARI_TOKEN:0:5}***（部分隐藏）"
+    # 3. 检查二进制文件可执行权限
+    if [ ! -x ./bin/komari-agent ]; then
+      echo "错误：二进制文件无执行权限，重新赋权..."
+      chmod +x ./bin/komari-agent
+    fi
 
-# 每小时整点触发（0分），支持手动触发
-on:
-  schedule:
-    - cron: '0 * * * *'  # 整点触发：10:00、11:00、12:00...
-  workflow_dispatch:
+    # ========== 启动Agent并立即输出日志 ==========
+    echo -e "\n=== 启动Komari Agent ==="
+    # 清空旧日志（避免干扰）
+    > komari-run.log
+    # 启动Agent（后台运行）
+    ./bin/komari-agent -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
+      --disable-auto-update \
+      --reconnect-interval 5 \
+      --max-retries 99 > komari-run.log 2>&1 &
+    AGENT_PID=$!
+    echo "Agent PID: $AGENT_PID，启动成功！"
 
-jobs:
-  run-agent:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30  # 超时保护（25分钟运行+5分钟冗余）
-    permissions:
-      contents: read  # 仅拉取代码权限，最小化权限
+    # ========== 立即输出初始日志（关键！排查连接问题） ==========
+    echo -e "\n=== 实时输出Agent初始日志（前30行） ==="
+    # 等待3秒让Agent输出初始化日志，再打印
+    sleep 3
+    cat komari-run.log
+    # 若日志为空，提示可能的问题
+    if [ ! -s komari-run.log ]; then
+      echo "警告：日志为空！可能Agent未启动/二进制文件异常，请检查架构兼容性。"
+    fi
 
-    steps:
-      - name: 拉取仓库代码（含二进制文件）
-        uses: actions/checkout@v4
-        # 无LFS，删除lfs: true配置
+    # ========== 运行25分钟（期间可实时跟踪日志） ==========
+    echo -e "\n=== 开始运行25分钟，实时跟踪日志（每10秒输出一次） ==="
+    # 后台实时输出日志（可选，避免阻塞sleep）
+    tail -f komari-run.log &
+    TAIL_PID=$!
 
-      - name: 赋予二进制文件执行权限（关键！）
-        run: chmod +x ./bin/komari-agent-linux-amd64
+    # 运行25分钟（1500秒）
+    sleep 1500
 
-      - name: 运行Komari Agent（25分钟后停止）
-        env:
-          KOMARI_TOKEN: ${{ secrets.KOMARI_TOKEN }}
-          KOMARI_SERVER: ${{ secrets.KOMARI_SERVER }}
-        run: |
-          # 后台运行Agent，并重定向日志（方便排查问题）
-          ./bin/komari-agent -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
-            --disable-auto-update \
-            --reconnect-interval 5 \
-            --max-retries 99 > komari-run.log 2>&1 &
-          AGENT_PID=$!
+    # ========== 停止进程并输出最终日志 ==========
+    echo -e "\n=== 运行结束，终止Agent进程 ==="
+    # 停止日志跟踪
+    kill $TAIL_PID 2>/dev/null || true
+    # 终止Agent进程（双重兜底）
+    kill $AGENT_PID 2>/dev/null || true
+    pkill -f "komari-agent" 2>/dev/null || true
 
-          # 运行25分钟（1500秒）
-          echo "Agent PID: $AGENT_PID，开始运行25分钟..."
-          sleep 1500
-
-          # 强制终止进程（双重兜底，避免残留）
-          echo "运行结束，终止Agent进程..."
-          kill $AGENT_PID 2>/dev/null || true
-          pkill -f "komari-agent" 2>/dev/null || true
-
-          # 输出运行日志（方便排查问题，可选）
-          echo "=== Agent运行日志 ==="
-          cat komari-run.log
-          echo "=== 日志结束 ==="
+    # 输出最终完整日志
+    echo -e "\n=== Agent完整运行日志 ==="
+    cat komari-run.log
+    echo "=== 日志结束 ==="
+  shell: /usr/bin/bash -e {0}
