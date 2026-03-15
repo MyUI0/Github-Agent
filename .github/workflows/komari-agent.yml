@@ -1,33 +1,48 @@
-name: Komari Agent (GitHub Actions)
+name: Komari Agent (Hourly 25min Run)
 
+# 每小时整点触发（0分），支持手动触发
 on:
   schedule:
-    # 每小时整点触发
-    - cron: '0 * * * *'
+    - cron: '0 * * * *'  # 整点触发：10:00、11:00、12:00...
   workflow_dispatch:
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # 最多 30 分钟，防止卡住
+    timeout-minutes: 30  # 超时保护（25分钟运行+5分钟冗余）
+    permissions:
+      contents: read  # 仅拉取代码权限，最小化权限
 
     steps:
-      - name: 下载 Komari Agent
-        run: |
-          curl -fsSL -o komari https://github.com/komari-monitor/komari-agent/releases/latest/download/komari-agent-linux-amd64
-          chmod +x komari
+      - name: 拉取仓库代码（含二进制文件）
+        uses: actions/checkout@v4
+        # 无LFS，删除lfs: true配置
 
-      - name: 运行 25 分钟后退出
+      - name: 赋予二进制文件执行权限（关键！）
+        run: chmod +x ./bin/komari-agent
+
+      - name: 运行Komari Agent（25分钟后停止）
         env:
           KOMARI_TOKEN: ${{ secrets.KOMARI_TOKEN }}
           KOMARI_SERVER: ${{ secrets.KOMARI_SERVER }}
         run: |
-          ./komari -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
+          # 后台运行Agent，并重定向日志（方便排查问题）
+          ./bin/komari-agent -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
             --disable-auto-update \
             --reconnect-interval 5 \
-            --max-retries 99 &
+            --max-retries 99 > komari-run.log 2>&1 &
           AGENT_PID=$!
 
-          # 运行 25 分钟（1500 秒）后主动结束
+          # 运行25分钟（1500秒）
+          echo "Agent PID: $AGENT_PID，开始运行25分钟..."
           sleep 1500
+
+          # 强制终止进程（双重兜底，避免残留）
+          echo "运行结束，终止Agent进程..."
           kill $AGENT_PID 2>/dev/null || true
+          pkill -f "komari-agent" 2>/dev/null || true
+
+          # 输出运行日志（方便排查问题，可选）
+          echo "=== Agent运行日志 ==="
+          cat komari-run.log
+          echo "=== 日志结束 ==="
