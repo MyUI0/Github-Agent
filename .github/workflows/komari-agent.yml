@@ -1,12 +1,10 @@
 name: Komari Agent (Hourly 25min Run)
 
-# 触发规则：每小时整点触发 + 手动触发
 on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
 
-# 任务定义（核心）
 jobs:
   run-agent:
     runs-on: ubuntu-latest
@@ -15,37 +13,45 @@ jobs:
       contents: read
 
     steps:
-      # 步骤1：拉取仓库代码（含二进制文件）
+      # 步骤1：拉取仓库代码（确认二进制文件是 komari-agent-linux-amd64）
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      # 步骤2：赋予二进制文件执行权限
+      # 步骤2：赋予实际文件名的二进制文件执行权限（核心修正）
       - name: 赋予执行权限
-        run: chmod +x ./bin/komari-agent-linux-amd64
+        run: |
+          # 列出bin目录文件，确认文件名（方便排查）
+          echo "=== bin目录文件列表 ==="
+          ls -lh ./bin/
+          # 给实际文件名赋权
+          chmod +x ./bin/komari-agent-linux-amd64
 
-      # 步骤3：运行Agent并优先输出日志（核心排查步骤）
+      # 步骤3：运行Agent（引用正确的文件名）
       - name: 运行Komari Agent（优先输出日志）
         env:
           KOMARI_TOKEN: ${{ secrets.KOMARI_TOKEN }}
           KOMARI_SERVER: ${{ secrets.KOMARI_SERVER }}
         run: |
-          # 前置检查
+          # 前置检查（匹配实际文件名）
           echo "=== 前置检查 ==="
-          if [ ! -f ./bin/komari-agent-linux-amd64 ]; then
-            echo "错误：二进制文件 ./bin/komari-agent 不存在！"
+          BIN_FILE="./bin/komari-agent-linux-amd64"
+          if [ ! -f $BIN_FILE ]; then
+            echo "错误：二进制文件 $BIN_FILE 不存在！"
+            echo "当前bin目录文件："
+            ls -lh ./bin/
             exit 1
           fi
           echo "KOMARI_SERVER: $KOMARI_SERVER"
           echo "KOMARI_TOKEN: ${KOMARI_TOKEN:0:5}***"
-          if [ ! -x ./bin/komari-agent-linux-amd64 ]; then
+          if [ ! -x $BIN_FILE ]; then
             echo "重新赋权..."
-            chmod +x ./bin/komari-agent-linux-amd64
+            chmod +x $BIN_FILE
           fi
 
-          # 启动Agent并立即输出日志
+          # 启动Agent（引用正确文件名）
           echo -e "\n=== 启动Agent ==="
           > komari-run.log
-          ./bin/komari-agent -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
+          $BIN_FILE -e "$KOMARI_SERVER" -t "$KOMARI_TOKEN" \
             --disable-auto-update \
             --reconnect-interval 5 \
             --max-retries 99 > komari-run.log 2>&1 &
@@ -70,7 +76,7 @@ jobs:
           echo -e "\n=== 终止进程 ==="
           kill $TAIL_PID 2>/dev/null || true
           kill $AGENT_PID 2>/dev/null || true
-          pkill -f "komari-agent" 2>/dev/null || true
+          pkill -f "komari-agent-linux-amd64" 2>/dev/null || true
 
           echo -e "\n=== 完整日志 ==="
           cat komari-run.log
