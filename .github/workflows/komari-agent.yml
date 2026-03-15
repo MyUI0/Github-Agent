@@ -31,15 +31,15 @@ jobs:
         run: |
           # 前置检查
           echo "=== 前置检查 ==="
-          if [ ! -f ./bin/komari-agent ]; then
+          if [ ! -f ./bin/komari-agent-linux-amd64 ]; then
             echo "错误：二进制文件 ./bin/komari-agent 不存在！"
             exit 1
           fi
           echo "KOMARI_SERVER: $KOMARI_SERVER"
           echo "KOMARI_TOKEN: ${KOMARI_TOKEN:0:5}***"
-          if [ ! -x ./bin/komari-agent ]; then
+          if [ ! -x ./bin/komari-agent-linux-amd64 ]; then
             echo "重新赋权..."
-            chmod +x ./bin/komari-agent
+            chmod +x ./bin/komari-agent-linux-amd64
           fi
 
           # 启动Agent并立即输出日志
