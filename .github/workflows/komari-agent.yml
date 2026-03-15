@@ -7,7 +7,7 @@
     # ========== 前置检查（先确认基础条件） ==========
     echo "=== 前置检查 ==="
     # 1. 检查二进制文件是否存在
-    if [ ! -f ./bin/komari-agent ]; then
+    if [ ! -f ./bin/komari-agent-linux-amd64 ]; then
       echo "错误：二进制文件 ./bin/komari-agent 不存在！"
       exit 1
     fi
