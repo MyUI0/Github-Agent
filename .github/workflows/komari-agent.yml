@@ -19,7 +19,7 @@ jobs:
         # 无LFS，删除lfs: true配置
 
       - name: 赋予二进制文件执行权限（关键！）
-        run: chmod +x ./bin/komari-agent
+        run: chmod +x ./bin/komari-agent-linux-amd64
 
       - name: 运行Komari Agent（25分钟后停止）
         env:
